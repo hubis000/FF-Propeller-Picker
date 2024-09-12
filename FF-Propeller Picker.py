@@ -5,6 +5,7 @@ from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from scipy.interpolate import griddata
+from tkinter.filedialog import askopenfilename
 
 def linterp2(rX, rY, X):
     """
@@ -41,7 +42,8 @@ def linterp2(rX, rY, X):
     return rY[l1] + (rY[l2] - rY[l1]) * (X - rX[l1]) / (rX[l2] - rX[l1])
 
 
-df_input = pd.read_excel("Input.xlsx")
+file_name=askopenfilename(title="Select a Input.xlsx file", filetypes=[("Input", "*Input.xlsx"),("Excel sheets", "*.xlsx"), ("All files", "*.*")])
+df_input = pd.read_excel(file_name)
 print("\n", df_input, "\n")
 
 # Extract the "Operating point" column
@@ -58,10 +60,11 @@ bigplot_dia = []
 bigplot_pitch = []
 bigplot_eff = []
 bigplot_p2d = []
-
+bigplot_advr = []
+filenames= []
 # Define the folder path
 dynamic_data = "Dynamic_data"
-plots_folder = "Plots"
+plots_folder = str(file_name.split("Input.xlsx")[0])+ "Plots"
 if not os.path.exists(plots_folder):
     os.makedirs(plots_folder)
 # Iterate over all Excel files in the folder
@@ -70,6 +73,7 @@ for filename in os.listdir(dynamic_data):
         # Load the Excel file into a DataFrame
         file_path = os.path.join(dynamic_data, filename)
         df_prop = pd.read_excel(file_path)
+        filenames.append(filename.split(".")[0])
         
         # Print the DataFrame to verify the content
         print(f"DataFrame loaded from {filename}:")
@@ -180,10 +184,10 @@ for filename in os.listdir(dynamic_data):
 
         bigplot_dia.append(diameter)
         bigplot_p2d.append(p2d)
+        bigplot_advr.append(adv_ratio)
         bigplot_eff.append(prop_eff)
         
 plt.close('all')
-
 
 #3D plot
 # bigplot_pitch = [float(p) for p in bigplot_pitch]
@@ -191,19 +195,24 @@ bigplot_eff = [arr.item() for arr in bigplot_eff]
 
 print(bigplot_eff)
 
+labels = [filenames[i] for i in range(len(bigplot_dia))]
+
 scatter = go.Scatter3d(
     x=bigplot_dia,
-    y=bigplot_p2d,
+    y=bigplot_advr,
     z=bigplot_eff,
-    mode='markers',
+    mode='markers+text',
+    text=labels,  # Add labels to each data point
+    textposition='top center',  # Position of the labels
     name='Data Points'
 )
 
 
+
 grid_x = np.linspace(min(bigplot_dia), max(bigplot_dia), 100)
-grid_y = np.linspace(min(bigplot_p2d), max(bigplot_p2d), 100)
+grid_y = np.linspace(min(bigplot_advr), max(bigplot_advr), 100)
 grid_x, grid_y = np.meshgrid(grid_x, grid_y)
-grid_z = griddata((bigplot_dia, bigplot_p2d), bigplot_eff, (grid_x, grid_y), method='linear')
+grid_z = griddata((bigplot_dia, bigplot_advr), bigplot_eff, (grid_x, grid_y), method='linear')
 surface = go.Surface(
     x=grid_x,
     y=grid_y,
@@ -216,9 +225,16 @@ surface = go.Surface(
 fig = go.Figure(data=[scatter, surface])   #fig = go.Figure(data=[scatter, surface])
 fig.update_layout(
     scene=dict(
-        xaxis_title='Diameter',
-        yaxis_title='Pitch to Diamter ratio',
-        zaxis_title='Propeller Efficiency'
+        xaxis=dict(
+            title='Diameter [in]'
+        ),
+        yaxis=dict(
+            title='Advance ratio [-]'
+        ),
+        zaxis=dict(
+            title='Propeller Efficiency [%]',
+            range=[0, max(bigplot_eff)]  # Set only the minimum limit for z-axis
+        )
     ),
     updatemenus=[
         dict(
@@ -251,7 +267,7 @@ print("\nMechanical Power DataFrame:\n", df_mech_power)
 print("\nRPM DataFrame:\n", df_rpm)
 
 # Save the final DataFrames to Output.xlsx with two empty rows separating them and a header
-with pd.ExcelWriter("Output.xlsx", engine='xlsxwriter') as writer:
+with pd.ExcelWriter(str(file_name.split("Input.xlsx")[0])+"/Output.xlsx", engine='xlsxwriter') as writer:
     start_row = 0
     
     worksheet = writer.book.add_worksheet("Sheet1")
@@ -259,26 +275,26 @@ with pd.ExcelWriter("Output.xlsx", engine='xlsxwriter') as writer:
 
     start_row = 0
     
-    writer.sheets["Sheet1"].write(start_row, 0, "Thrust Data")
+    writer.sheets["Sheet1"].write(start_row, 0, "Thrust Data [N]")
     start_row += 1
     df_thrust.to_excel(writer, sheet_name="Sheet1", startrow=start_row, index=False)
     start_row += len(df_thrust) + 3
     
-    writer.sheets["Sheet1"].write(start_row, 0, "Tip Speed Data")
+    writer.sheets["Sheet1"].write(start_row, 0, "Tip Speed Data [M]")
     start_row += 1
     df_tip_speed.to_excel(writer, sheet_name="Sheet1", startrow=start_row, index=False)
     start_row += len(df_tip_speed) + 3
 
-    writer.sheets["Sheet1"].write(start_row, 0, "Propeller Efficiency Data")
+    writer.sheets["Sheet1"].write(start_row, 0, "Propeller Efficiency Data [%]")
     start_row += 1    
     df_prop_efficiency.to_excel(writer, sheet_name="Sheet1", startrow=start_row, index=False)
     start_row += len(df_prop_efficiency) + 3
 
-    writer.sheets["Sheet1"].write(start_row, 0, "Mechanical Power Data")
+    writer.sheets["Sheet1"].write(start_row, 0, "Mechanical Power Data [W]")
     start_row += 1    
     df_mech_power.to_excel(writer, sheet_name="Sheet1", startrow=start_row, index=False)
     start_row += len(df_prop_efficiency) + 3    
 
-    writer.sheets["Sheet1"].write(start_row, 0, "RPM Data")
+    writer.sheets["Sheet1"].write(start_row, 0, "RPM Data [min-1]")
     start_row += 1
     df_rpm.to_excel(writer, sheet_name="Sheet1", startrow=start_row, index=False)
